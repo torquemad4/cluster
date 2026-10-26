@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Cluster — BattleTech damage resolver</title>
+<!-- These 404 harmlessly when the file is opened directly from disk. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<style>
+:root{
+  --bg:#0b0f14; --panel:#141b23; --panel2:#1b2531; --line:#2a3644; --line2:#3a4a5c;
+  --txt:#e6edf3; --dim:#8b9bad; --dim2:#5f7183;
+  --accent:#ffa726; --accent-d:#7a4f10; --hot:#ff5252; --good:#5ec269; --cool:#4fa3d1;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  overscroll-behavior-y:contain}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px 40px}
+
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:40;background:rgba(11,15,20,.94);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);padding:10px 12px;margin:0 -12px 12px}
+.hrow{max-width:736px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.brand{font-weight:800;letter-spacing:.14em;font-size:15px;color:var(--accent)}
+.brand small{display:block;font-weight:500;letter-spacing:.04em;font-size:10px;color:var(--dim2);margin-top:1px}
+.spacer{flex:1}
+.iconbtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+  border-radius:9px;padding:7px 10px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap}
+.iconbtn.on{background:var(--accent-d);border-color:var(--accent);color:var(--accent)}
+.iconbtn:active{transform:scale(.96)}
+
+/* ---------- sections ---------- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:10px;scroll-margin-top:70px}
+#result{scroll-margin-top:66px}
+.lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim2);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.lbl .spacer{flex:1}
+.lbl button{background:none;border:none;color:var(--dim2);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:700;cursor:pointer;padding:0}
+.lbl button:hover{color:var(--accent)}
+
+/* ---------- chips ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:8px;
+  padding:7px 11px;font-size:13px;cursor:pointer;font-weight:600;user-select:none;transition:.08s}
+.chip:active{transform:scale(.95)}
+.chip.on{background:var(--accent-d);border-color:var(--accent);color:var(--accent)}
+.chip.warn.on{background:#5a2020;border-color:var(--hot);color:#ff8a8a}
+.chip.mini{padding:5px 9px;font-size:12px}
+.chip[disabled]{opacity:.3;pointer-events:none}
+
+/* ---------- arc selector ---------- */
+.arcs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.arc{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:8px;
+  padding:9px 4px;text-align:center;cursor:pointer;font-weight:700;font-size:12px}
+.arc.on{background:var(--accent-d);border-color:var(--accent);color:var(--accent)}
+.arc small{display:block;font-size:9px;font-weight:600;color:var(--dim2);margin-top:2px}
+.arc.on small{color:var(--accent)}
+
+/* ---------- weapons ---------- */
+#search{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+  border-radius:8px;padding:9px 11px;font-size:14px;margin-bottom:9px;font-family:inherit}
+#search:focus{outline:none;border-color:var(--accent)}
+.wgroup{margin-bottom:10px}
+.wgroup h4{margin:0 0 6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);font-weight:700}
+.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.wbtn{background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:9px;
+  padding:11px 6px;font-size:13px;font-weight:700;cursor:pointer;text-align:center;
+  line-height:1.2;position:relative;transition:.08s}
+.wbtn:active{transform:scale(.94);background:var(--accent-d)}
+.wbtn small{display:block;font-size:9px;font-weight:600;color:var(--dim2);margin-top:3px;letter-spacing:.03em}
+.wbtn.pinned::after{content:"★";position:absolute;top:3px;right:5px;font-size:9px;color:var(--accent)}
+body.pinmode .wbtn{border-style:dashed}
+body.pinmode .wbtn:active{background:var(--panel2)}
+
+/* ---------- result ---------- */
+#result:empty{display:none}
+.res{background:linear-gradient(180deg,#1a2430,#141b23);border:1px solid var(--line2);
+  border-radius:12px;padding:12px;margin-bottom:10px;animation:pop .16s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.res .top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+.res .wn{font-size:17px;font-weight:800;color:var(--accent)}
+.res .tgt{font-size:11px;color:var(--dim2);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.res .undo{margin-left:auto;background:none;border:1px solid var(--line);color:var(--dim2);
+  border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;font-weight:700}
+.math{font-family:var(--mono);font-size:12px;color:var(--dim);background:#0e141b;
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:9px;line-height:1.6}
+.math b{color:var(--txt)}
+.math .big{color:var(--accent);font-size:15px;font-weight:700}
+.math .neg{color:var(--hot)}
+.math .pos{color:var(--good)}
+.allocs{display:flex;flex-direction:column;gap:5px}
+.alloc{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:9px 11px}
+.alloc .dmg{font-family:var(--mono);font-size:19px;font-weight:800;color:var(--txt);min-width:38px;text-align:right}
+.alloc .loc{font-size:15px;font-weight:700;flex:1}
+.alloc .die{font-family:var(--mono);font-size:11px;color:var(--dim2);background:#0e141b;
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+.alloc .sub{font-size:10px;color:var(--dim2);font-weight:600}
+.alloc.head{border-color:var(--hot);background:#2a1618}
+.alloc.head .loc,.alloc.head .dmg{color:#ff8a8a}
+.alloc.tac{border-color:var(--accent)}
+.alloc.void{opacity:.45}
+.alloc.void .dmg{text-decoration:line-through}
+.tag{font-size:9px;font-weight:800;letter-spacing:.08em;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.tag.red{background:#5a2020;color:#ff8a8a}
+.tag.amb{background:var(--accent-d);color:var(--accent)}
+.tag.blue{background:#1c3a4d;color:var(--cool)}
+.res .foot{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);
+  display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:var(--dim)}
+.res .foot b{font-family:var(--mono);font-size:17px;color:var(--txt)}
+.warnline{margin-top:8px;font-size:11px;color:var(--accent);background:#2a2110;
+  border:1px solid var(--accent-d);border-radius:7px;padding:6px 9px;line-height:1.4}
+
+/* ---------- tally ---------- */
+.tally{display:flex;flex-direction:column;gap:4px}
+.trow{display:flex;align-items:center;gap:9px;font-size:13px}
+.trow .n{font-family:var(--mono);font-weight:700;min-width:32px;text-align:right;color:var(--txt)}
+.trow .bar{height:7px;border-radius:4px;background:var(--accent);opacity:.8;min-width:3px}
+.trow .ln{flex:1;color:var(--dim);font-weight:600}
+.trow.head .ln,.trow.head .n{color:#ff8a8a}
+.trow.head .bar{background:var(--hot)}
+.tsum{display:flex;gap:14px;font-size:12px;color:var(--dim);margin-top:9px;padding-top:9px;
+  border-top:1px solid var(--line);flex-wrap:wrap}
+.tsum b{font-family:var(--mono);font-size:16px;color:var(--txt)}
+.empty{color:var(--dim2);font-size:13px;text-align:center;padding:14px 0}
+
+/* ---------- keypad overlay ---------- */
+#pad{position:fixed;inset:0;z-index:60;background:rgba(5,8,11,.9);backdrop-filter:blur(4px);
+  display:none;align-items:flex-end;justify-content:center}
+#pad.show{display:flex}
+.padbox{background:var(--panel);border:1px solid var(--line2);border-radius:16px 16px 0 0;
+  width:100%;max-width:520px;padding:16px 14px calc(18px + env(safe-area-inset-bottom))}
+.padttl{text-align:center;font-size:13px;color:var(--dim);margin-bottom:3px;font-weight:600}
+.padsub{text-align:center;font-size:20px;font-weight:800;color:var(--accent);margin-bottom:13px}
+.padgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+.padk{background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:10px;
+  padding:15px 0;font-size:19px;font-weight:800;cursor:pointer;font-family:var(--mono)}
+.padk:active{background:var(--accent-d);border-color:var(--accent)}
+.padcancel{width:100%;margin-top:9px;background:none;border:1px solid var(--line);color:var(--dim2);
+  border-radius:9px;padding:10px;font-size:13px;font-weight:700;cursor:pointer}
+
+/* ---------- modal ---------- */
+#modal{position:fixed;inset:0;z-index:70;background:var(--bg);display:none;overflow-y:auto}
+#modal.show{display:block}
+.mbox{max-width:720px;margin:0 auto;padding:16px 12px 60px}
+.mhead{position:sticky;top:0;background:rgba(11,15,20,.96);backdrop-filter:blur(10px);
+  display:flex;gap:8px;align-items:center;padding:12px 0;margin-bottom:8px;z-index:2;flex-wrap:wrap}
+.mhead h2{margin:0;font-size:16px;font-weight:800;letter-spacing:.08em;color:var(--accent)}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.tab{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:8px;
+  padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.tab.on{background:var(--accent-d);border-color:var(--accent);color:var(--accent)}
+.pane{display:none}.pane.on{display:block}
+.rule{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.rule .rt{display:flex;align-items:center;gap:9px;margin-bottom:5px;flex-wrap:wrap}
+.rule .rn{font-weight:700;font-size:14px;flex:1}
+.rule input{width:64px;background:#0e141b;border:1px solid var(--line2);color:var(--accent);
+  border-radius:7px;padding:6px 8px;font-family:var(--mono);font-size:15px;font-weight:700;text-align:center}
+.rule .note{font-size:11.5px;color:var(--dim);line-height:1.5}
+.badge{font-size:9px;font-weight:800;letter-spacing:.07em;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.badge.ok{background:#1c3d24;color:var(--good)}
+.badge.check{background:var(--accent-d);color:var(--accent)}
+.badge.unknown{background:#5a2020;color:#ff8a8a}
+table.ref{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;margin-bottom:14px}
+table.ref th,table.ref td{border:1px solid var(--line);padding:4px 5px;text-align:center}
+table.ref th{background:var(--panel2);color:var(--accent);font-size:10px}
+table.ref td.rl{background:var(--panel2);color:var(--dim);font-weight:700}
+table.ref td.hi{background:#2a2110;color:var(--accent);font-weight:700}
+.md{font-size:13px;color:var(--dim);line-height:1.65}
+.md h3{color:var(--txt);font-size:14px;margin:16px 0 6px}
+.md a{color:var(--cool)}
+.md code{background:#0e141b;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+.md ul{padding-left:18px;margin:6px 0}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <div class="brand">CLUSTER<small>BattleTech damage resolver</small></div>
+    <div class="spacer"></div>
+    <button class="iconbtn on" id="diceBtn" title="Dice mode">Auto-roll</button>
+    <button class="iconbtn" id="setBtn">Rules</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <div class="lbl">Target<span class="spacer"></span>
+      <button id="addTgt">+ add</button><button id="delTgt">remove</button></div>
+    <div class="chips" id="tgtChips" style="margin-bottom:10px"></div>
+
+    <div class="chips" id="typeChips" style="margin-bottom:10px"></div>
+    <div class="arcs" id="arcs"></div>
+    <div class="chips" id="tgtOpts" style="margin-top:10px"></div>
+  </section>
+
+  <section>
+    <div class="lbl">Cluster roll modifiers</div>
+    <div class="chips" id="mods"></div>
+  </section>
+
+  <section>
+    <div class="lbl">Weapons<span class="spacer"></span>
+      <button id="pinBtn">pin favourites</button></div>
+    <div class="chips" id="wgroups" style="margin-bottom:9px"></div>
+    <input id="search" placeholder="Filter weapons…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="weapons"></div>
+  </section>
+
+  <div id="result"></div>
+
+  <section>
+    <div class="lbl">Damage this game<span class="spacer"></span>
+      <button id="clearTgt">clear target</button><button id="clearAll">clear all</button></div>
+    <div id="tally"></div>
+  </section>
+
+  <p style="font-size:11px;color:var(--dim2);text-align:center;line-height:1.6;margin:18px 0 0">
+    Ruleset: <b style="color:var(--dim)">BattleTech Core Rulebook</b> (CAT37101, 2026) where the changelog
+    records a change; Total Warfare behaviour retained everywhere it does not.<br>
+    Open <b style="color:var(--dim)">Rules</b> to correct any value from your copy of the book.
+  </p>
+</div>
+
+<div id="pad"><div class="padbox">
+  <div class="padttl" id="padTtl"></div>
+  <div class="padsub" id="padSub"></div>
+  <div class="padgrid" id="padGrid"></div>
+  <button class="padcancel" id="padCancel">Cancel</button>
+</div></div>
+
+<div id="modal"><div class="mbox">
+  <div class="mhead"><h2>RULES &amp; TABLES</h2><div class="spacer" style="flex:1"></div>
+    <button class="iconbtn" id="closeModal">Close</button></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="pane on" id="pane-rules"></div>
+  <div class="pane" id="pane-tables"></div>
+  <div class="pane" id="pane-notes"></div>
+</div></div>
+
+<script>
+/* ==ENGINE-START==
+   BattleTech Cluster Resolver — rules engine
+   Pure logic, no DOM. Inlined into the HTML build.
+   Ruleset: BattleTech Core Rulebook (CAT37101, 2026) where verified; Total Warfare
+   behaviour retained where the Core changelog records no change.
+   Every value carrying uncertainty is exposed through RULES so it can be corrected
+   in the app's Rules panel without touching code.
+*/
+
+// ---------------------------------------------------------------------------
+// Cluster Hits Table.  Rows = 2D6 result, columns = cluster size.
+// Cross-verified: MegaMek Compute.clusterHitsTable, the wolfsdragoons Total Warfare
+// compiled-tables scan, and the AGoAC reference card. Unchanged by the Core Rulebook
+// (no changelog entry; author Keith Hann confirmed it was deliberately kept).
+// ---------------------------------------------------------------------------
+const CLUSTER_TABLE = {
+  2:  {2:1, 3:1, 4:1, 5:1, 6:1, 7:1, 8:2, 9:2, 10:2, 11:2, 12:2},
+  3:  {2:1, 3:1, 4:2, 5:2, 6:2, 7:2, 8:2, 9:2, 10:3, 11:3, 12:3},
+  4:  {2:1, 3:2, 4:2, 5:2, 6:3, 7:3, 8:3, 9:3, 10:3, 11:4, 12:4},
+  5:  {2:1, 3:2, 4:2, 5:3, 6:3, 7:3, 8:3, 9:4, 10:4, 11:5, 12:5},
+  6:  {2:2, 3:2, 4:3, 5:3, 6:4, 7:4, 8:4, 9:5, 10:5, 11:6, 12:6},
+  9:  {2:3, 3:3, 4:4, 5:5, 6:5, 7:5, 8:5, 9:7, 10:7, 11:9, 12:9},
+  10: {2:3, 3:3, 4:4, 5:6, 6:6, 7:6, 8:6, 9:8, 10:8, 11:10, 12:10},
+  12: {2:4, 3:4, 4:5, 5:8, 6:8, 7:8, 8:8, 9:10, 10:10, 11:12, 12:12},
+  15: {2:5, 3:5, 4:6, 5:9, 6:9, 7:9, 8:9, 9:12, 10:12, 11:15, 12:15},
+  20: {2:6, 3:6, 4:9, 5:12, 6:12, 7:12, 8:12, 9:16, 10:16, 11:20, 12:20},
+  30: {2:10, 3:10, 4:12, 5:18, 6:18, 7:18, 8:18, 9:24, 10:24, 11:30, 12:30},
+  40: {2:12, 3:12, 4:18, 5:24, 6:24, 7:24, 8:24, 9:32, 10:32, 11:40, 12:40}
+};
+const CLUSTER_COLUMNS = [2,3,4,5,6,9,10,12,15,20,30,40];
+
+// ---------------------------------------------------------------------------
+// Hit location tables
+// ---------------------------------------------------------------------------
+const MECH_LOC = {
+  front: {2:'CT*',3:'RA',4:'RA',5:'RL',6:'RT',7:'CT',8:'LT',9:'LL',10:'LA',11:'LA',12:'HD'},
+  rear:  {2:'CT*',3:'RA',4:'RA',5:'RL',6:'RT',7:'CT',8:'LT',9:'LL',10:'LA',11:'LA',12:'HD'},
+  left:  {2:'LT*',3:'LL',4:'LA',5:'LA',6:'LL',7:'LT',8:'CT',9:'RT',10:'RA',11:'RL',12:'HD'},
+  right: {2:'RT*',3:'RL',4:'RA',5:'RA',6:'RL',7:'RT',8:'CT',9:'LT',10:'LA',11:'LL',12:'HD'}
+};
+const MECH_LOC_NAMES = {
+  HD:'Head', CT:'Centre Torso', LT:'Left Torso', RT:'Right Torso',
+  LA:'Left Arm', RA:'Right Arm', LL:'Left Leg', RL:'Right Leg'
+};
+// Floating Critical (Core Rulebook: standard-but-optional). A roll of 2 still means a
+// through-armour critical, but the location is re-rolled on the same column.
+const LEG_LOCS = ['LL','RL'];
+
+const VEHICLE_LOC = {
+  front: {2:{loc:'Front',crit:true},3:{loc:'Front',motive:true},4:{loc:'Front',motive:true},
+          5:{loc:'Right Side',motive:true},6:{loc:'Front'},7:{loc:'Front'},8:{loc:'Front',critCheck:true},
+          9:{loc:'Left Side',motive:true},10:{loc:'Turret'},11:{loc:'Turret'},12:{loc:'Turret',crit:true}},
+  side:  {2:{loc:'Side',crit:true},3:{loc:'Side',motive:true},4:{loc:'Side',motive:true},
+          5:{loc:'Front',motive:true},6:{loc:'Side'},7:{loc:'Side'},8:{loc:'Side',critCheck:true},
+          9:{loc:'Rear',motive:true},10:{loc:'Turret'},11:{loc:'Turret'},12:{loc:'Turret',crit:true}},
+  rear:  {2:{loc:'Rear',crit:true},3:{loc:'Rear',motive:true},4:{loc:'Rear',motive:true},
+          5:{loc:'Left Side',motive:true},6:{loc:'Rear'},7:{loc:'Rear'},8:{loc:'Rear',critCheck:true},
+          9:{loc:'Right Side',motive:true},10:{loc:'Turret'},11:{loc:'Turret'},12:{loc:'Turret',crit:true}}
+};
+// Motive System Damage Table — Total Warfare p.192/193, two independent official scans agree.
+const MOTIVE_TABLE = [
+  {max:5,  name:'No effect', effect:'No effect'},
+  {max:7,  name:'Minor',     effect:'+1 to all Driving Skill Rolls'},
+  {max:9,  name:'Moderate',  effect:'-1 Cruising MP, +2 to all Driving Skill Rolls'},
+  {max:11, name:'Heavy',     effect:'Half Cruising MP (round up), +3 to all Driving Skill Rolls'},
+  {max:99, name:'Major',     effect:'Immobile — no movement for the rest of the game'}
+];
+const MOTIVE_TYPE_MOD = {Tracked:0, Naval:0, Wheeled:2, Hover:3, Hydrofoil:3, WiGE:4};
+const MOTIVE_DIR_MOD  = {front:0, side:2, rear:1};
+
+// ProtoMech — Total Warfare p.185. 3 and 11 are Near Miss (no damage).
+const PROTO_LOC = {
+  standard: {2:'Main Gun',3:'Near Miss',4:'Right Arm',5:'Legs',6:'Torso',7:'Torso',8:'Torso',9:'Legs',10:'Left Arm',11:'Near Miss',12:'Head'},
+  special:  {2:'Main Gun',3:'Legs',4:'Legs',5:'Right Arm',6:'Torso',7:'Torso',8:'Torso',9:'Left Arm',10:'Legs',11:'Legs',12:'Head'}
+};
+
+// Aerospace fighter — Total Warfare p.237. Cell format Location / Critical.
+const AERO_LOC = {
+  nose: {2:'Nose / Weapon',3:'Nose / Sensors',4:'Right Wing / Heat Sink',5:'Right Wing / Weapon',6:'Nose / Avionics',7:'Nose / Control',8:'Nose / FCS',9:'Left Wing / Weapon',10:'Left Wing / Heat Sink',11:'Nose / Gear',12:'Nose / Weapon'},
+  aft:  {2:'Aft / Weapon',3:'Aft / Heat Sink',4:'Right Wing / Fuel',5:'Right Wing / Weapon',6:'Aft / Engine',7:'Aft / Control',8:'Aft / Engine',9:'Left Wing / Weapon',10:'Left Wing / Fuel',11:'Aft / Heat Sink',12:'Aft / Weapon'},
+  side: {2:'Nose / Weapon',3:'Wing / Gear',4:'Nose / Sensors',5:'Nose / Crew',6:'Wing / Weapon',7:'Wing / Avionics',8:'Wing / Bomb',9:'Aft / Control',10:'Aft / Engine',11:'Wing / Gear',12:'Aft / Weapon'},
+  ab:   {2:'Nose / Weapon',3:'Wing / Gear',4:'Nose / Sensors',5:'Nose / Crew',6:'Wing / Weapon',7:'Nose / Avionics',8:'Wing / Weapon',9:'Aft / Control',10:'Aft / Engine',11:'Wing / Gear',12:'Aft / Weapon'}
+};
+
+// ---------------------------------------------------------------------------
+// Editable rules constants. Defaults are my best-verified reading; `confidence`
+// drives the badge shown in the Rules panel.
+// ---------------------------------------------------------------------------
+const RULES_DEFAULTS = {
+  artemisIV:    {v: 2,  label:'Artemis IV FCS',            confidence:'ok',    note:'No Core changelog entry — unchanged from Total Warfare.'},
+  artemisV:     {v: 3,  label:'Artemis V FCS',             confidence:'ok',    note:'No Core changelog entry — unchanged.'},
+  artemisProto: {v: 1,  label:'Artemis Prototype FCS',     confidence:'ok',    note:'Unchanged.'},
+  narc:         {v: 2,  label:'Narc / iNarc homing pod',   confidence:'check', note:'Core: "Homing pod effects rewritten to be stronger and to merge Narc and iNarc effects." The new number is not public. +2 is the Total Warfare value — correct this from your book.'},
+  atmIntegral:  {v: 2,  label:'ATM integral guidance',     confidence:'ok',    note:'ATMs mount an integral Artemis IV.'},
+  mrmBase:      {v:-1,  label:'MRM base penalty',          confidence:'ok',    note:'Core: "+1 TN penalty removed, -1 Cluster Hits Table penalty added." NEW in Core Rules.'},
+  apolloStd:    {v: 1,  label:'Apollo FCS, standard mode', confidence:'ok',    note:'Core: Apollo reworked so standard mode removes the MRM cluster penalty. +1 cancels the -1.'},
+  apolloSat:    {v: 0,  label:'Apollo FCS, saturation',    confidence:'unknown',note:'Core adds a "saturation mode" to Apollo. MegaMek call it a major change. Its mechanics are NOT public. Set this yourself from the book.'},
+  mgArray:      {v: 2,  label:'Machine Gun Array',         confidence:'ok',    note:'Core: "Machine Gun Array: Adds +2 to the Cluster Hits Table roll." NEW in Core Rules.'},
+  ams:          {v:-4,  label:'AMS engaged',               confidence:'check', note:'Core: "Roll results versus a single missile reversed... All AMS can be activated twice per turn and can reduce a missile flight cluster size to 0." The -4 is the Total Warfare value; verify against your book.'},
+  acid:         {v:-1,  label:'Acid missiles',             confidence:'ok',    note:'Core: "Cluster Hits Table penalty reduced from -2 to -1."'},
+  semiGuided:   {v:-1,  label:'Semi-guided, fired unguided',confidence:'ok',   note:'Core: reworked; -1 Cluster Hits Table penalty when fired unguided.'},
+  atmGroup:     {v: 6,  label:'ATM missiles per damage group', confidence:'check', note:'Core: "Missile, ATM: Cluster size changed from 5 to 6." Reading this as 6 missiles per damage group. If your book means 6 damage points per group, change this.'},
+  floatingCrit: {v: 0,  label:'Floating Critical (optional)', confidence:'ok', note:'Core: "Floating Crits added as a standard (yet still optional) rule." Off = a roll of 2 hits the near torso as usual.'}
+};
+
+// ---------------------------------------------------------------------------
+// Weapon catalogue
+//   col          cluster-table column
+//   dmg          damage per missile / shell / pellet
+//   mpg          missiles per damage group; 1 = each rolls its own location,
+//                0 = every hit lands on ONE location (Machine Gun Array)
+//   mods         which modifiers may apply
+//   auto         hits with the full rack, no cluster roll (Streak)
+//   shotsPick    player chooses number of shots (Rotary AC)
+// ---------------------------------------------------------------------------
+const WEAPONS = [
+  // --- Long Range Missiles ---
+  {id:'lrm5',  name:'LRM 5',  group:'LRM', col:5,  dmg:1, mpg:5, mods:['artemis','narc','ams','ammo']},
+  {id:'lrm10', name:'LRM 10', group:'LRM', col:10, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo']},
+  {id:'lrm15', name:'LRM 15', group:'LRM', col:15, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo']},
+  {id:'lrm20', name:'LRM 20', group:'LRM', col:20, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo']},
+  {id:'elrm5', name:'ELRM 5', group:'LRM', col:5,  dmg:1, mpg:5, mods:['artemis','narc','ams','ammo'], note:'Core: no longer halves cluster results at minimum range; can now use Artemis.'},
+  {id:'elrm10',name:'ELRM 10',group:'LRM', col:10, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo'], note:'Core: no longer halves cluster results at minimum range; can now use Artemis.'},
+  {id:'elrm15',name:'ELRM 15',group:'LRM', col:15, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo'], note:'Core: no longer halves cluster results at minimum range; can now use Artemis.'},
+  {id:'elrm20',name:'ELRM 20',group:'LRM', col:20, dmg:1, mpg:5, mods:['artemis','narc','ams','ammo'], note:'Core: no longer halves cluster results at minimum range; can now use Artemis.'},
+  {id:'slrm5', name:'Streak LRM 5',  group:'LRM', col:5,  dmg:1, mpg:5, auto:true, mods:['ams']},
+  {id:'slrm10',name:'Streak LRM 10', group:'LRM', col:10, dmg:1, mpg:5, auto:true, mods:['ams']},
+  {id:'slrm15',name:'Streak LRM 15', group:'LRM', col:15, dmg:1, mpg:5, auto:true, mods:['ams']},
+  {id:'slrm20',name:'Streak LRM 20', group:'LRM', col:20, dmg:1, mpg:5, auto:true, mods:['ams']},
+  {id:'lrt5',  name:'LRT 5',  group:'LRM', col:5,  dmg:1, mpg:5, mods:['artemis','narc','ams']},
+  {id:'lrt10', name:'LRT 10', group:'LRM', col:10, dmg:1, mpg:5, mods:['artemis','narc','ams']},
+  {id:'lrt15', name:'LRT 15', group:'LRM', col:15, dmg:1, mpg:5, mods:['artemis','narc','ams']},
+  {id:'lrt20', name:'LRT 20', group:'LRM', col:20, dmg:1, mpg:5, mods:['artemis','narc','ams']},
+
+  // --- Short Range Missiles ---
+  {id:'srm2', name:'SRM 2', group:'SRM', col:2, dmg:2, mpg:1, mods:['artemis','narc','ams','ammo']},
+  {id:'srm4', name:'SRM 4', group:'SRM', col:4, dmg:2, mpg:1, mods:['artemis','narc','ams','ammo']},
+  {id:'srm6', name:'SRM 6', group:'SRM', col:6, dmg:2, mpg:1, mods:['artemis','narc','ams','ammo']},
+  {id:'ssrm2',name:'Streak SRM 2', group:'SRM', col:2, dmg:2, mpg:1, auto:true, mods:['ams']},
+  {id:'ssrm4',name:'Streak SRM 4', group:'SRM', col:4, dmg:2, mpg:1, auto:true, mods:['ams']},
+  {id:'ssrm6',name:'Streak SRM 6', group:'SRM', col:6, dmg:2, mpg:1, auto:true, mods:['ams']},
+  {id:'srt2', name:'SRT 2', group:'SRM', col:2, dmg:2, mpg:1, mods:['artemis','narc','ams']},
+  {id:'srt4', name:'SRT 4', group:'SRM', col:4, dmg:2, mpg:1, mods:['artemis','narc','ams']},
+  {id:'srt6', name:'SRT 6', group:'SRM', col:6, dmg:2, mpg:1, mods:['artemis','narc','ams']},
+
+  // --- Medium Range Missiles ---
+  {id:'mrm10',name:'MRM 10',group:'MRM', col:10, dmg:1, mpg:5, mrm:true, mods:['apollo','ams']},
+  {id:'mrm20',name:'MRM 20',group:'MRM', col:20, dmg:1, mpg:5, mrm:true, mods:['apollo','ams']},
+  {id:'mrm30',name:'MRM 30',group:'MRM', col:30, dmg:1, mpg:5, mrm:true, mods:['apollo','ams']},
+  {id:'mrm40',name:'MRM 40',group:'MRM', col:40, dmg:1, mpg:5, mrm:true, mods:['apollo','ams']},
+
+  // --- Rocket launchers (one-shot) ---
+  {id:'rl10', name:'Rocket Launcher 10', group:'Rocket', col:10, dmg:1, mpg:5, mods:['ams']},
+  {id:'rl15', name:'Rocket Launcher 15', group:'Rocket', col:15, dmg:1, mpg:5, mods:['ams']},
+  {id:'rl20', name:'Rocket Launcher 20', group:'Rocket', col:20, dmg:1, mpg:5, mods:['ams']},
+
+  // --- ATM ---
+  {id:'atm3', name:'ATM 3', group:'ATM', col:3,  dmg:2, mpg:'atm', atm:true, mods:['narc','ams']},
+  {id:'atm6', name:'ATM 6', group:'ATM', col:6,  dmg:2, mpg:'atm', atm:true, mods:['narc','ams']},
+  {id:'atm9', name:'ATM 9', group:'ATM', col:9,  dmg:2, mpg:'atm', atm:true, mods:['narc','ams']},
+  {id:'atm12',name:'ATM 12',group:'ATM', col:12, dmg:2, mpg:'atm', atm:true, mods:['narc','ams']},
+
+  // --- Cluster autocannon ---
+  {id:'lb2',  name:'LB 2-X (cluster)',  group:'Autocannon', col:2,  dmg:1, mpg:1},
+  {id:'lb5',  name:'LB 5-X (cluster)',  group:'Autocannon', col:5,  dmg:1, mpg:1},
+  {id:'lb10', name:'LB 10-X (cluster)', group:'Autocannon', col:10, dmg:1, mpg:1},
+  {id:'lb20', name:'LB 20-X (cluster)', group:'Autocannon', col:20, dmg:1, mpg:1},
+  {id:'uac2', name:'Ultra AC/2 (2 shots)',  group:'Autocannon', col:2, dmg:2,  mpg:1, shots:true, note:'Core: Ultra ACs no longer jam.'},
+  {id:'uac5', name:'Ultra AC/5 (2 shots)',  group:'Autocannon', col:2, dmg:5,  mpg:1, shots:true, note:'Core: Ultra ACs no longer jam.'},
+  {id:'uac10',name:'Ultra AC/10 (2 shots)', group:'Autocannon', col:2, dmg:10, mpg:1, shots:true, note:'Core: Ultra ACs no longer jam.'},
+  {id:'uac20',name:'Ultra AC/20 (2 shots)', group:'Autocannon', col:2, dmg:20, mpg:1, shots:true, note:'Core: Ultra ACs no longer jam.'},
+  {id:'rac2', name:'Rotary AC/2', group:'Autocannon', col:6, dmg:2, mpg:1, shotsPick:true, note:'Core: unjamming moves to the Movement Phase; rounds no longer stick in the chamber.'},
+  {id:'rac5', name:'Rotary AC/5', group:'Autocannon', col:6, dmg:5, mpg:1, shotsPick:true, note:'Core: unjamming moves to the Movement Phase; rounds no longer stick in the chamber.'},
+
+  // --- Gauss ---
+  {id:'hag20',name:'HAG 20', group:'Gauss', col:20, dmg:1, mpg:5},
+  {id:'hag30',name:'HAG 30', group:'Gauss', col:30, dmg:1, mpg:5},
+  {id:'hag40',name:'HAG 40', group:'Gauss', col:40, dmg:1, mpg:5},
+  {id:'sbg',  name:'Silver Bullet Gauss', group:'Gauss', col:20, dmg:1, mpg:1, confidence:'check', note:'Submunition count not independently verified — treated as a 20-slug cluster. Check Tactical Operations pp.406-407.'},
+
+  // --- Machine gun arrays ---
+  {id:'mga2l',name:'MG Array x2 (Light)',   group:'MG Array', col:2, dmg:1, mpg:0, mga:true},
+  {id:'mga3l',name:'MG Array x3 (Light)',   group:'MG Array', col:3, dmg:1, mpg:0, mga:true},
+  {id:'mga4l',name:'MG Array x4 (Light)',   group:'MG Array', col:4, dmg:1, mpg:0, mga:true},
+  {id:'mga2', name:'MG Array x2 (Standard)',group:'MG Array', col:2, dmg:2, mpg:0, mga:true},
+  {id:'mga3', name:'MG Array x3 (Standard)',group:'MG Array', col:3, dmg:2, mpg:0, mga:true},
+  {id:'mga4', name:'MG Array x4 (Standard)',group:'MG Array', col:4, dmg:2, mpg:0, mga:true},
+  {id:'mga2h',name:'MG Array x2 (Heavy)',   group:'MG Array', col:2, dmg:3, mpg:0, mga:true},
+  {id:'mga3h',name:'MG Array x3 (Heavy)',   group:'MG Array', col:3, dmg:3, mpg:0, mga:true},
+  {id:'mga4h',name:'MG Array x4 (Heavy)',   group:'MG Array', col:4, dmg:3, mpg:0, mga:true}
+];
+
+const ATM_AMMO = {
+  he:  {label:'HE',       dmg:3, note:'no minimum range'},
+  std: {label:'Standard', dmg:2, note:''},
+  er:  {label:'ER',       dmg:1, note:'extended range'}
+};
+
+// ---------------------------------------------------------------------------
+// Dice
+// ---------------------------------------------------------------------------
+function d6(rng)  { return Math.floor((rng ? rng() : Math.random()) * 6) + 1; }
+function d66(rng) { return d6(rng) + d6(rng); }
+
+function clamp2to12(n) { return Math.max(2, Math.min(12, n)); }
+
+// ---------------------------------------------------------------------------
+// Cluster roll modifier assembly
+// ---------------------------------------------------------------------------
+function clusterModifiers(weapon, opts, rules) {
+  const R = k => (rules[k] !== undefined ? rules[k] : RULES_DEFAULTS[k].v);
+  const mods = [];
+  const guidanceBlocked = opts.ecm || opts.stealth;
+
+  if (weapon.mrm) {
+    mods.push({label:'MRM', v: R('mrmBase')});
+    if (opts.apollo === 'std') mods.push({label:'Apollo (standard)', v: R('apolloStd')});
+    if (opts.apollo === 'sat') mods.push({label:'Apollo (saturation)', v: R('apolloSat'), flag:'unknown'});
+  }
+  if (weapon.mga) mods.push({label:'MG Array', v: R('mgArray')});
+
+  if (weapon.atm) {
+    if (guidanceBlocked) mods.push({label:'ATM guidance blocked by ECM', v:0, muted:true});
+    else mods.push({label:'ATM integral guidance', v: R('atmIntegral')});
+  }
+  if (opts.artemis && opts.artemis !== 'none' && (weapon.mods||[]).includes('artemis')) {
+    if (guidanceBlocked) mods.push({label:'Artemis blocked by ECM', v:0, muted:true});
+    else {
+      const key = opts.artemis === 'v' ? 'artemisV' : opts.artemis === 'proto' ? 'artemisProto' : 'artemisIV';
+      mods.push({label: RULES_DEFAULTS[key].label, v: R(key)});
+    }
+  }
+  if (opts.narc && (weapon.mods||[]).includes('narc')) {
+    if (guidanceBlocked) mods.push({label:'Narc blocked by ECM', v:0, muted:true});
+    else mods.push({label:'Narc homing pod', v: R('narc'), flag: 'check'});
+  }
+  if (opts.acid)       mods.push({label:'Acid missiles', v: R('acid')});
+  if (opts.semiGuided) mods.push({label:'Semi-guided, unguided', v: R('semiGuided')});
+  if (opts.ams)        mods.push({label:'AMS engaged', v: R('ams'), flag:'check'});
+  if (opts.other)      mods.push({label:'Other', v: Number(opts.other) || 0});
+
+  return mods;
+}
+
+// ---------------------------------------------------------------------------
+// How many missiles hit
+// ---------------------------------------------------------------------------
+function resolveCluster(weapon, opts, rules, rng) {
+  const col = opts.shotsPick ? Number(opts.shotsPick) : weapon.col;
+  const mods = clusterModifiers(weapon, opts, rules);
+  const modTotal = mods.reduce((a, m) => a + (m.muted ? 0 : m.v), 0);
+
+  // Streak: the full rack hits without a cluster roll, unless AMS engages.
+  if (weapon.auto && !opts.ams) {
+    return {auto:true, col, raw:null, mods, modTotal, effective:null, hits:col};
+  }
+
+  const raw = opts.manualRoll ? Number(opts.manualRoll) : d66(rng);
+  const effective = clamp2to12(raw + modTotal);
+  const column = CLUSTER_TABLE[col] ? col : nearestColumn(col);
+  const hits = CLUSTER_TABLE[column][effective];
+  return {auto:false, col:column, requestedCol:col, raw, mods, modTotal, effective, hits};
+}
+
+function nearestColumn(n) {
+  let best = CLUSTER_COLUMNS[0];
+  for (const c of CLUSTER_COLUMNS) if (Math.abs(c - n) < Math.abs(best - n)) best = c;
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Split the missiles that hit into damage groups
+// ---------------------------------------------------------------------------
+function makeGroups(weapon, hits, opts, rules) {
+  const R = k => (rules[k] !== undefined ? rules[k] : RULES_DEFAULTS[k].v);
+  let dmgPer = weapon.dmg;
+  if (weapon.atm) dmgPer = ATM_AMMO[opts.atmAmmo || 'std'].dmg;
+
+  let mpg = weapon.mpg;
+  if (mpg === 'atm') mpg = R('atmGroup');
+
+  if (mpg === 0) return [{count: hits, damage: hits * dmgPer, all: true}];  // MG Array
+  if (mpg === 1) return Array.from({length: hits}, () => ({count:1, damage: dmgPer}));
+
+  const groups = [];
+  let left = hits;
+  while (left > 0) {
+    const n = Math.min(mpg, left);
+    groups.push({count:n, damage: n * dmgPer, partial: n < mpg});
+    left -= n;
+  }
+  // Core Rulebook, Damage §2: "leftover damage groupings are always applied last."
+  groups.sort((a, b) => (a.partial ? 1 : 0) - (b.partial ? 1 : 0));
+  return groups;
+}
+
+// ---------------------------------------------------------------------------
+// Hit location
+// ---------------------------------------------------------------------------
+function rollLocation(target, opts, rules, rng, manual) {
+  const R = k => (rules[k] !== undefined ? rules[k] : RULES_DEFAULTS[k].v);
+  const roll = manual != null ? Number(manual) : d66(rng);
+  const arc = target.arc || 'front';
+
+  if (target.type === 'mech') {
+    let code = MECH_LOC[arc][roll];
+    let tac = false, floated = null;
+    if (code.endsWith('*')) {
+      tac = true;
+      code = code.slice(0, -1);
+      if (R('floatingCrit')) {                     // re-roll the location, crit still applies
+        let r2 = d66(rng);
+        while (MECH_LOC[arc][r2].endsWith('*')) r2 = d66(rng);
+        floated = r2;
+        code = MECH_LOC[arc][r2];
+      }
+    }
+    let covered = false;
+    if (opts.partialCover && LEG_LOCS.includes(code)) covered = true;
+    return {
+      roll, floated, code, tac,
+      name: MECH_LOC_NAMES[code] + (arc === 'rear' && ['CT','LT','RT'].includes(code) ? ' (rear)' : ''),
+      head: code === 'HD',
+      covered
+    };
+  }
+
+  if (target.type === 'vehicle') {
+    const arcKey = arc === 'left' || arc === 'right' ? 'side' : arc;
+    const cell = VEHICLE_LOC[arcKey][roll];
+    let name = cell.loc;
+    if (name === 'Turret' && target.noTurret) name = arcKey === 'side' ? 'Side' : (arcKey === 'rear' ? 'Rear' : 'Front');
+    return {roll, name, code:name, crit: !!cell.crit, critCheck: !!cell.critCheck, motive: !!cell.motive};
+  }
+
+  if (target.type === 'proto') {
+    const name = PROTO_LOC.standard[roll];
+    return {roll, name, code:name, nearMiss: name === 'Near Miss', head: name === 'Head'};
+  }
+
+  if (target.type === 'aero') {
+    const arcKey = arc === 'left' || arc === 'right' ? 'side' : (arc === 'rear' ? 'aft' : arc === 'ab' ? 'ab' : 'nose');
+    const name = AERO_LOC[arcKey][roll];
+    return {roll, name, code:name};
+  }
+
+  if (target.type === 'ba') {
+    const t = d6(rng);
+    return {roll:t, d6:true, name:`Trooper ${t}`, code:`T${t}`, note:'no damage transfer between troopers'};
+  }
+
+  return {roll, name:'—', code:'—'};
+}
+
+// ---------------------------------------------------------------------------
+// Conventional infantry — Total Warfare p.217 table.
+// Cluster (missile) = damage/5; cluster (ballistic) = damage/10 + 1. Round up.
+// ---------------------------------------------------------------------------
+function infantryCasualties(weapon, totalDamage, mechanised) {
+  const ballistic = ['Autocannon','Gauss','MG Array'].includes(weapon.group);
+  const n = ballistic ? Math.ceil(totalDamage / 10) + 1 : Math.ceil(totalDamage / 5);
+  return {
+    troopers: mechanised ? n * 2 : n,
+    basis: ballistic ? 'Cluster (ballistic): damage / 10 + 1' : 'Cluster (missile): damage / 5',
+    mechanised
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Full attack resolution
+// ---------------------------------------------------------------------------
+function resolveAttack(weapon, target, opts, rules, rng) {
+  const cluster = resolveCluster(weapon, opts, rules, rng);
+  const groups  = makeGroups(weapon, cluster.hits, opts, rules);
+
+  let totalDamage = 0;
+  const allocations = [];
+  const manualLocs = opts.manualLocations || [];
+
+  groups.forEach((g, i) => {
+    const loc = rollLocation(target, opts, rules, rng, manualLocs[i]);
+    const applied = loc.nearMiss || loc.covered ? 0 : g.damage;
+    totalDamage += applied;
+    let motive = null;
+    if (loc.motive && target.type === 'vehicle') {
+      const mRoll = d66(rng);
+      const mod = (MOTIVE_TYPE_MOD[target.motiveType] || 0) + (MOTIVE_DIR_MOD[target.arc === 'left' || target.arc === 'right' ? 'side' : (target.arc || 'front')] || 0);
+      const total = mRoll + mod;
+      motive = {roll:mRoll, mod, total, result: MOTIVE_TABLE.find(r => total <= r.max)};
+    }
+    allocations.push({...g, location: loc, applied, motive});
+  });
+
+  const rawDamage = groups.reduce((a, g) => a + g.damage, 0);
+  const result = {
+    weapon, cluster, groups, allocations,
+    totalDamage, rawDamage,
+    headHits: allocations.filter(a => a.location.head && a.applied > 0).length,
+    tacs:     allocations.filter(a => a.location.tac).length,
+    crits:    allocations.filter(a => a.location.crit || a.location.critCheck).length
+  };
+
+  if (target.type === 'infantry') {
+    result.infantry = infantryCasualties(weapon, rawDamage, target.mechanised);
+    result.allocations = [];
+    result.totalDamage = rawDamage;
+  }
+  return result;
+}
+
+/* ==ENGINE-END== */
+
+
+// ===========================================================================
+// State
+// ===========================================================================
+var store = (function(){
+  try { localStorage.setItem('__t','1'); localStorage.removeItem('__t');
+        return {get:function(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},
+                set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}}; }
+  catch(e){ var m={}; return {get:function(k){return m[k]===undefined?null:m[k]},set:function(k,v){m[k]=v}}; }
+})();
+
+var TYPES = [
+  {id:'mech',     label:"'Mech"},
+  {id:'vehicle',  label:'Vehicle'},
+  {id:'proto',    label:'ProtoMech'},
+  {id:'ba',       label:'Battle Armour'},
+  {id:'infantry', label:'Infantry'},
+  {id:'aero',     label:'Aerospace'}
+];
+var ARCS = {
+  mech:    [['front','Front','2-12'],['left','Left','side'],['right','Right','side'],['rear','Rear','back']],
+  vehicle: [['front','Front',''],['left','Left','side'],['right','Right','side'],['rear','Rear','']],
+  proto:   [['front','Any','one table']],
+  ba:      [['front','Any','1D6 trooper']],
+  infantry:[['front','Any','casualties']],
+  aero:    [['front','Nose',''],['left','Left','wing'],['right','Right','wing'],['rear','Aft','']]
+};
+
+function newTarget(n){ return {name:'Target '+n, type:'mech', arc:'front', motiveType:'Tracked',
+  noTurret:false, mechanised:false, tally:{}, total:0, heads:0, tacs:0, crits:0, history:[]}; }
+
+var S = store.get('cluster.state') || {};
+if (!S.targets || !S.targets.length) S = {targets:[newTarget(1)], cur:0};
+if (S.cur == null || S.cur >= S.targets.length) S.cur = 0;
+S.targets.forEach(function(t){ t.tally = t.tally || {}; t.history = t.history || []; });
+
+var RULES  = store.get('cluster.rules')  || {};
+var PINS   = store.get('cluster.pins')   || [];
+var OPTS   = store.get('cluster.opts')   || {artemis:'none', atmAmmo:'std', apollo:'none'};
+var MANUAL = store.get('cluster.manual') || false;
+var pinMode = false, filter = '', groupFilter = 'All';
+
+function save(){ store.set('cluster.state',S); store.set('cluster.rules',RULES);
+  store.set('cluster.pins',PINS); store.set('cluster.opts',OPTS); store.set('cluster.manual',MANUAL); }
+function T(){ return S.targets[S.cur]; }
+function $(id){ return document.getElementById(id); }
+function el(tag,cls,txt){ var e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
+function R(k){ return RULES[k] !== undefined ? RULES[k] : RULES_DEFAULTS[k].v; }
+
+// ===========================================================================
+// Render: target
+// ===========================================================================
+function renderTargets(){
+  var c = $('tgtChips'); c.innerHTML='';
+  S.targets.forEach(function(t,i){
+    var b = el('div','chip'+(i===S.cur?' on':''), t.name + (t.total?' · '+t.total:''));
+    b.onclick = function(){ S.cur=i; $('result').innerHTML=''; save(); renderAll(); };
+    b.ondblclick = function(){ var n = prompt('Target name', t.name); if(n){t.name=n;save();renderAll();} };
+    c.appendChild(b);
+  });
+
+  var tc = $('typeChips'); tc.innerHTML='';
+  TYPES.forEach(function(ty){
+    var b = el('div','chip mini'+(T().type===ty.id?' on':''), ty.label);
+    b.onclick = function(){ T().type=ty.id; T().arc='front'; save(); renderAll(); };
+    tc.appendChild(b);
+  });
+
+  var a = $('arcs'); a.innerHTML='';
+  var list = ARCS[T().type];
+  a.style.gridTemplateColumns = 'repeat('+Math.min(4,list.length)+',1fr)';
+  list.forEach(function(x){
+    var b = el('div','arc'+(T().arc===x[0]?' on':''));
+    b.appendChild(el('span',null,x[1]));
+    if(x[2]) b.appendChild(el('small',null,x[2]));
+    b.onclick=function(){ T().arc=x[0]; save(); renderAll(); };
+    a.appendChild(b);
+  });
+
+  var o = $('tgtOpts'); o.innerHTML='';
+  function opt(label,get,set,cls){
+    var b = el('div','chip mini'+(get()?' on':'')+(cls?' '+cls:''), label);
+    b.onclick=function(){ set(!get()); save(); renderAll(); }; o.appendChild(b);
+  }
+  if(T().type==='mech'){
+    opt('Partial cover', function(){return OPTS.partialCover}, function(v){OPTS.partialCover=v});
+    opt('Floating crit', function(){return !!R('floatingCrit')}, function(v){RULES.floatingCrit=v?1:0});
+  }
+  if(T().type==='vehicle'){
+    opt('No turret', function(){return T().noTurret}, function(v){T().noTurret=v});
+    ['Tracked','Wheeled','Hover','Hydrofoil','WiGE','Naval'].forEach(function(m){
+      var b = el('div','chip mini'+(T().motiveType===m?' on':''), m);
+      b.onclick=function(){ T().motiveType=m; save(); renderAll(); }; o.appendChild(b);
+    });
+  }
+  if(T().type==='infantry') opt('Mechanised', function(){return T().mechanised}, function(v){T().mechanised=v});
+}
+
+// ===========================================================================
+// Render: modifiers
+// ===========================================================================
+function renderMods(){
+  var c = $('mods'); c.innerHTML='';
+  function tog(label,on,fn,cls){
+    var b = el('div','chip mini'+(on?' on':'')+(cls?' '+cls:''), label);
+    b.onclick=function(){ fn(); save(); renderMods(); }; c.appendChild(b); return b;
+  }
+  // Artemis — tapping the active one clears it
+  ['iv','v','proto'].forEach(function(k){
+    var name = {iv:'Artemis IV', v:'Artemis V', proto:'Artemis proto'}[k];
+    tog(name, OPTS.artemis===k, function(){ OPTS.artemis = (OPTS.artemis===k ? 'none' : k); });
+  });
+  tog('Narc', OPTS.narc, function(){ OPTS.narc=!OPTS.narc; });
+  tog('AMS', OPTS.ams, function(){ OPTS.ams=!OPTS.ams; }, 'warn');
+  tog('ECM', OPTS.ecm, function(){ OPTS.ecm=!OPTS.ecm; }, 'warn');
+  tog('Acid', OPTS.acid, function(){ OPTS.acid=!OPTS.acid; }, 'warn');
+  tog('Semi-guided', OPTS.semiGuided, function(){ OPTS.semiGuided=!OPTS.semiGuided; }, 'warn');
+  ['std','sat'].forEach(function(k){
+    var name={std:'Apollo std',sat:'Apollo saturation'}[k];
+    tog(name, (OPTS.apollo||'none')===k, function(){ OPTS.apollo = ((OPTS.apollo||'none')===k ? 'none' : k); });
+  });
+
+  var sep = el('div'); sep.style.cssText='flex-basis:100%;height:0'; c.appendChild(sep);
+  var lab = el('div',null,'ATM ammo'); lab.style.cssText='font-size:11px;color:var(--dim2);align-self:center;font-weight:700';
+  c.appendChild(lab);
+  ['he','std','er'].forEach(function(k){
+    tog(ATM_AMMO[k].label+' ('+ATM_AMMO[k].dmg+')', (OPTS.atmAmmo||'std')===k, function(){ OPTS.atmAmmo=k; });
+  });
+}
+
+// ===========================================================================
+// Render: weapons
+// ===========================================================================
+function renderWeapons(){
+  // group filter row
+  var gc = $('wgroups'); gc.innerHTML='';
+  var allGroups = [];
+  WEAPONS.forEach(function(w){ if(allGroups.indexOf(w.group)<0) allGroups.push(w.group); });
+  var tabsList = ['All'];
+  if (PINS.length) tabsList.push('★');
+  tabsList = tabsList.concat(allGroups);
+  tabsList.forEach(function(g){
+    var b = el('div','chip mini'+(groupFilter===g?' on':''), g);
+    b.onclick=function(){ groupFilter=g; renderWeapons(); };
+    gc.appendChild(b);
+  });
+
+  var host = $('weapons'); host.innerHTML='';
+  var f = filter.trim().toLowerCase();
+  var list = WEAPONS.filter(function(w){ return !f || w.name.toLowerCase().indexOf(f)>=0 || w.group.toLowerCase().indexOf(f)>=0; });
+  if (groupFilter === '★') list = list.filter(function(w){ return PINS.indexOf(w.id)>=0; });
+  else if (groupFilter !== 'All') list = list.filter(function(w){ return w.group===groupFilter; });
+
+  function grid(title, items){
+    if(!items.length) return;
+    var g = el('div','wgroup'); g.appendChild(el('h4',null,title));
+    var wg = el('div','wgrid');
+    items.forEach(function(w){
+      var b = el('button','wbtn'+(PINS.indexOf(w.id)>=0?' pinned':''));
+      b.appendChild(el('span',null,w.name));
+      b.appendChild(el('small',null, w.auto ? 'auto-hit' : ('col '+w.col+' · '+w.dmg+'dmg')));
+      b.onclick=function(){
+        if(pinMode){ var i=PINS.indexOf(w.id); if(i>=0)PINS.splice(i,1); else PINS.push(w.id); save(); renderWeapons(); }
+        else fire(w);
+      };
+      wg.appendChild(b);
+    });
+    g.appendChild(wg); host.appendChild(g);
+  }
+
+  if (groupFilter === 'All') {
+    var pinned = list.filter(function(w){ return PINS.indexOf(w.id)>=0; });
+    if(pinned.length) grid('★ Your loadout', pinned);
+  }
+  var groups = {};
+  list.forEach(function(w){ (groups[w.group] = groups[w.group] || []).push(w); });
+  Object.keys(groups).forEach(function(k){ grid(k, groups[k]); });
+  if(!list.length) host.appendChild(el('div','empty', filter ? 'No weapon matches "'+filter+'".' : 'Nothing pinned yet — tap "pin favourites", then tap the launchers your ’Mech carries.'));
+}
+
+// ===========================================================================
+// Firing
+// ===========================================================================
+function fire(w){
+  var t = T();
+  var opts = Object.assign({}, OPTS, {partialCover: OPTS.partialCover});
+
+  if (w.shotsPick) {
+    askNumber('Rotary AC — shots fired', w.name, [2,3,4,5,6], function(n){
+      opts.shotsPick = n; step2(w,t,opts);
+    });
+    return;
+  }
+  step2(w,t,opts);
+}
+
+function step2(w,t,opts){
+  if (!MANUAL) return commit(w,t,opts);
+  if (w.auto && !opts.ams) return commit(w,t,opts);
+  askNumber('Cluster roll (2D6)', w.name, [2,3,4,5,6,7,8,9,10,11,12], function(n){
+    opts.manualRoll = n;
+    var cl = resolveCluster(w, opts, RULES);
+    var groups = makeGroups(w, cl.hits, opts, RULES);
+    if (t.type === 'infantry') return commit(w,t,opts);
+    var need = groups.length, got = [];
+    (function nextLoc(){
+      if (got.length >= need){ opts.manualLocations = got; return commit(w,t,opts); }
+      var dieLabel = t.type==='ba' ? 'Trooper roll (1D6)' : 'Hit location (2D6)';
+      var keys = t.type==='ba' ? [1,2,3,4,5,6] : [2,3,4,5,6,7,8,9,10,11,12];
+      askNumber(dieLabel + '  —  ' + (got.length+1) + ' of ' + need,
+        groups[got.length].damage + ' damage', keys, function(v){ got.push(v); nextLoc(); });
+    })();
+  });
+}
+
+function commit(w,t,opts){
+  var res = resolveAttack(w, t, opts, RULES);
+  var snap = {tally:JSON.parse(JSON.stringify(t.tally)), total:t.total, heads:t.heads, tacs:t.tacs, crits:t.crits};
+  t.history.push(snap);
+  if (t.history.length > 40) t.history.shift();
+
+  if (res.infantry) {
+    t.tally['Troopers'] = (t.tally['Troopers']||0) + res.infantry.troopers;
+    t.total += res.infantry.troopers;
+  } else {
+    res.allocations.forEach(function(a){
+      if (a.applied <= 0) return;
+      var key = a.location.name;
+      t.tally[key] = (t.tally[key]||0) + a.applied;
+      t.total += a.applied;
+    });
+    t.heads += res.headHits; t.tacs += res.tacs; t.crits += res.crits;
+  }
+  save(); renderResult(res, w, t); renderTargets(); renderTally();
+  window.scrollTo({top: $('result').offsetTop - 70, behavior:'smooth'});
+}
+
+function undo(){
+  var t = T();
+  var s = t.history.pop();
+  if(!s) return;
+  t.tally = s.tally; t.total = s.total; t.heads = s.heads; t.tacs = s.tacs; t.crits = s.crits;
+  var host = $('result'); if (host.firstChild) host.removeChild(host.firstChild);
+  save(); renderTargets(); renderTally();
+}
+
+// ===========================================================================
+// Render: result
+// ===========================================================================
+function renderResult(res, w, t){
+  var host = $('result');
+  var box = el('div','res');
+
+  var top = el('div','top');
+  top.appendChild(el('div','wn', w.name));
+  top.appendChild(el('div','tgt', '→ ' + t.name + ' · ' + (ARCS[t.type].filter(function(x){return x[0]===t.arc})[0]||['','?'])[1]));
+  var u = el('button','undo','Undo'); u.onclick=undo; top.appendChild(u);
+  box.appendChild(top);
+
+  // maths line
+  var m = el('div','math');
+  var c = res.cluster;
+  if (c.auto) {
+    m.innerHTML = '<b>Streak lock</b> — full rack hits, no cluster roll · <span class="big">'+c.hits+'</span> missiles';
+  } else {
+    var parts = ['2D6 <b>'+c.raw+'</b>'];
+    c.mods.forEach(function(x){
+      if (x.muted) { parts.push('<span class="neg">'+x.label+'</span>'); return; }
+      var sign = x.v>=0?'+':'';
+      parts.push('<span class="'+(x.v>=0?'pos':'neg')+'">'+sign+x.v+' '+x.label+'</span>');
+    });
+    m.innerHTML = parts.join(' ') + ' = <b>' + c.effective + '</b>' +
+      (c.raw + c.modTotal !== c.effective ? ' <span class="neg">(clamped)</span>' : '') +
+      '<br>Cluster table column <b>' + c.col + '</b> → <span class="big">' + c.hits + '</span> ' +
+      (w.group==='Autocannon' && (w.shots||w.shotsPick) ? 'shots hit' : w.group==='MG Array' ? 'guns hit' : w.group==='Gauss'&&w.id!=='sbg' ? 'slugs hit' : w.mpg===1&&w.dmg===1 ? 'pellets hit' : 'missiles hit');
+  }
+  box.appendChild(m);
+
+  if (res.infantry) {
+    var ib = el('div','alloc');
+    ib.appendChild(el('div','dmg', String(res.infantry.troopers)));
+    ib.appendChild(el('div','loc','troopers eliminated'));
+    ib.appendChild(el('div','sub', res.infantry.basis + (res.infantry.mechanised?' ×2 mechanised':'')));
+    box.appendChild(ib);
+  } else {
+    var al = el('div','allocs');
+    res.allocations.forEach(function(a){
+      var row = el('div','alloc' + (a.location.head?' head':'') + (a.location.tac?' tac':'') + (a.applied<=0?' void':''));
+      row.appendChild(el('div','dmg', String(a.damage)));
+      var loc = el('div','loc', a.location.name);
+      row.appendChild(loc);
+      if (a.location.tac) { var tg=el('span','tag amb','TAC'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(tg); }
+      if (a.location.head) { var hg=el('span','tag red','HEAD'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(hg); }
+      if (a.location.crit) { var cg=el('span','tag amb','CRIT'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(cg); }
+      if (a.location.critCheck) { var cc=el('span','tag blue','CRIT CHK'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(cc); }
+      if (a.location.nearMiss) { var nm=el('span','tag blue','NEAR MISS'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(nm); }
+      if (a.location.covered) { var pc=el('span','tag blue','COVERED'); loc.appendChild(document.createTextNode(' ')); loc.appendChild(pc); }
+      if (a.motive) {
+        var mv = el('div','sub','motive '+a.motive.total+' → '+a.motive.result.name);
+        row.appendChild(mv);
+      }
+      row.appendChild(el('div','die', (a.location.d6?'d6 ':'') + a.location.roll + (a.location.floated?'→'+a.location.floated:'')));
+      al.appendChild(row);
+    });
+    box.appendChild(al);
+  }
+
+  var f = el('div','foot');
+  f.innerHTML = 'Total <b>'+res.totalDamage+'</b>' +
+    (res.allocations.length ? ' &nbsp;·&nbsp; '+res.allocations.length+' location'+(res.allocations.length>1?'s':'') : '') +
+    (res.headHits ? ' &nbsp;·&nbsp; <span style="color:#ff8a8a;font-weight:700">'+res.headHits+' head hit'+(res.headHits>1?'s':'')+' — pilot damage</span>' : '') +
+    (res.tacs ? ' &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:700">'+res.tacs+' through-armour crit</span>' : '');
+  box.appendChild(f);
+
+  var warns = [];
+  if (w.note) warns.push(w.note);
+  if (res.cluster.mods.some(function(x){return x.flag==='unknown'}))
+    warns.push('Apollo saturation mode is not publicly documented — it is currently contributing ' + R('apolloSat') + '. Set it in Rules.');
+  if (res.cluster.mods.some(function(x){return x.flag==='check'}))
+    warns.push('This roll used a value flagged for checking against your book (see Rules).');
+  if (w.confidence === 'check') warns.push('This weapon’s submunition count is unverified — check before relying on it.');
+  if (warns.length) { var wl = el('div','warnline', warns.join('  ')); box.appendChild(wl); }
+
+  // newest first, so a full salvo stays on screen
+  host.insertBefore(box, host.firstChild);
+  while (host.children.length > 8) host.removeChild(host.lastChild);
+  trimUndo();
+}
+
+// Only the most recent card carries an Undo — that is the only one that is reversible.
+function trimUndo(){
+  var host = $('result');
+  for (var i = 1; i < host.children.length; i++){
+    var u = host.children[i].querySelector('.undo');
+    if (u) u.parentNode.removeChild(u);
+  }
+}
+
+// ===========================================================================
+// Render: tally
+// ===========================================================================
+function renderTally(){
+  var t = T(), host = $('tally'); host.innerHTML='';
+  var keys = Object.keys(t.tally);
+  if(!keys.length){ host.appendChild(el('div','empty','Nothing hit yet. Tap a weapon.')); return; }
+  keys.sort(function(a,b){ return t.tally[b]-t.tally[a]; });
+  var max = t.tally[keys[0]] || 1;
+  var wrap = el('div','tally');
+  keys.forEach(function(k){
+    var r = el('div','trow'+(/head/i.test(k)?' head':''));
+    r.appendChild(el('div','n', String(t.tally[k])));
+    var bar = el('div','bar'); bar.style.width = Math.max(3, (t.tally[k]/max)*90) + 'px';
+    r.appendChild(bar);
+    r.appendChild(el('div','ln', k));
+    wrap.appendChild(r);
+  });
+  host.appendChild(wrap);
+  var s = el('div','tsum');
+  s.innerHTML = 'Total on '+t.name+' <b>'+t.total+'</b>' +
+    (t.heads?' &nbsp;·&nbsp; head hits <b style="color:#ff8a8a">'+t.heads+'</b>':'') +
+    (t.tacs?' &nbsp;·&nbsp; TACs <b style="color:var(--accent)">'+t.tacs+'</b>':'') +
+    (t.crits?' &nbsp;·&nbsp; crit checks <b>'+t.crits+'</b>':'');
+  host.appendChild(s);
+}
+
+// ===========================================================================
+// Number pad
+// ===========================================================================
+var padCb = null;
+function askNumber(title, sub, keys, cb){
+  padCb = cb;
+  $('padTtl').textContent = title;
+  $('padSub').textContent = sub;
+  var g = $('padGrid'); g.innerHTML='';
+  g.style.gridTemplateColumns = 'repeat('+(keys.length>6?6:keys.length)+',1fr)';
+  keys.forEach(function(k){
+    var b = el('button','padk', String(k));
+    b.onclick=function(){ $('pad').classList.remove('show'); var f=padCb; padCb=null; if(f)f(k); };
+    g.appendChild(b);
+  });
+  $('pad').classList.add('show');
+}
+$('padCancel').onclick=function(){ $('pad').classList.remove('show'); padCb=null; };
+
+// ===========================================================================
+// Modal: rules / tables / notes
+// ===========================================================================
+function renderModal(){
+  var p = $('pane-rules'); p.innerHTML='';
+  Object.keys(RULES_DEFAULTS).forEach(function(k){
+    var d = RULES_DEFAULTS[k];
+    var box = el('div','rule');
+    var rt = el('div','rt');
+    rt.appendChild(el('div','rn', d.label));
+    var badge = el('span','badge '+d.confidence, d.confidence==='ok'?'verified':d.confidence==='check'?'check your book':'not public');
+    rt.appendChild(badge);
+    var inp = document.createElement('input');
+    inp.type='number'; inp.value = R(k);
+    inp.onchange=function(){ RULES[k] = Number(inp.value); save(); renderTargets(); };
+    rt.appendChild(inp);
+    box.appendChild(rt);
+    box.appendChild(el('div','note', d.note));
+    p.appendChild(box);
+  });
+  var reset = el('button','iconbtn','Reset all to defaults');
+  reset.onclick=function(){ RULES={}; save(); renderModal(); renderTargets(); };
+  p.appendChild(reset);
+
+  // tables
+  var q = $('pane-tables'); q.innerHTML='';
+  q.appendChild(tableBlock('Cluster Hits Table', function(){
+    var t = el('table','ref'), h = el('tr');
+    h.appendChild(el('th',null,'2D6'));
+    CLUSTER_COLUMNS.forEach(function(c){ h.appendChild(el('th',null,String(c))); });
+    t.appendChild(h);
+    for(var r=2;r<=12;r++){
+      var tr = el('tr'); var td=el('td','rl',String(r)); tr.appendChild(td);
+      CLUSTER_COLUMNS.forEach(function(c){
+        var cell = el('td',(r===7?'hi':null), String(CLUSTER_TABLE[c][r]));
+        tr.appendChild(cell);
+      });
+      t.appendChild(tr);
+    }
+    return t;
+  }, 'Cross-verified against MegaMek, the Total Warfare compiled tables and the AGoAC reference card. The Core Rulebook does not change it.'));
+
+  q.appendChild(tableBlock("'Mech Hit Location", function(){
+    var t = el('table','ref'), h=el('tr');
+    ['2D6','Front / Rear','Left side','Right side'].forEach(function(x){ h.appendChild(el('th',null,x)); });
+    t.appendChild(h);
+    for(var r=2;r<=12;r++){
+      var tr=el('tr'); tr.appendChild(el('td','rl',String(r)));
+      ['front','left','right'].forEach(function(a){
+        var code = MECH_LOC[a][r], star = code.endsWith('*');
+        tr.appendChild(el('td', star?'hi':null, MECH_LOC_NAMES[star?code.slice(0,-1):code] + (star?' *':'')));
+      });
+      t.appendChild(tr);
+    }
+    return t;
+  }, '* = through-armour critical. 12 = head on every column. Core Rulebook makes no change here (only the Punch table was reversed).'));
+
+  q.appendChild(tableBlock('Combat Vehicle Hit Location', function(){
+    var t=el('table','ref'), h=el('tr');
+    ['2D6','Front','Side','Rear'].forEach(function(x){ h.appendChild(el('th',null,x)); });
+    t.appendChild(h);
+    for(var r=2;r<=12;r++){
+      var tr=el('tr'); tr.appendChild(el('td','rl',String(r)));
+      ['front','side','rear'].forEach(function(a){
+        var c = VEHICLE_LOC[a][r];
+        tr.appendChild(el('td', c.crit?'hi':null, c.loc + (c.crit?' *':'') + (c.motive?' †':'')));
+      });
+      t.appendChild(tr);
+    }
+    return t;
+  }, '* = critical. † = roll on the Motive System Damage Table. Single-source (AGoAC reference card) — worth a glance against your book.'));
+
+  q.appendChild(tableBlock('Motive System Damage', function(){
+    var t=el('table','ref'), h=el('tr');
+    ['Roll','Result','Effect'].forEach(function(x){ h.appendChild(el('th',null,x)); });
+    t.appendChild(h);
+    var prev=1;
+    MOTIVE_TABLE.forEach(function(m){
+      var tr=el('tr');
+      tr.appendChild(el('td','rl', m.max>=99 ? (prev+1)+'+' : (prev+1)+'–'+m.max));
+      tr.appendChild(el('td',null,m.name));
+      var e=el('td',null,m.effect); e.style.textAlign='left'; tr.appendChild(e);
+      prev = m.max; t.appendChild(tr);
+    });
+    return t;
+  }, 'Modifiers: rear +1, side +2. Wheeled +2, Hover/Hydrofoil +3, WiGE +4, Tracked/Naval +0.'));
+
+  q.appendChild(tableBlock('ProtoMech Hit Location', function(){
+    var t=el('table','ref'), h=el('tr');
+    ['2D6','Location'].forEach(function(x){ h.appendChild(el('th',null,x)); });
+    t.appendChild(h);
+    for(var r=2;r<=12;r++){
+      var tr=el('tr'); tr.appendChild(el('td','rl',String(r)));
+      tr.appendChild(el('td', PROTO_LOC.standard[r]==='Near Miss'?'hi':null, PROTO_LOC.standard[r]));
+      t.appendChild(tr);
+    }
+    return t;
+  }, 'Total Warfare p.185. A 3 or 11 is a Near Miss and inflicts no damage.'));
+
+  q.appendChild(tableBlock('Aerospace Fighter Hit Location', function(){
+    var t=el('table','ref'), h=el('tr');
+    ['2D6','Nose','Side','Aft'].forEach(function(x){ h.appendChild(el('th',null,x)); });
+    t.appendChild(h);
+    for(var r=2;r<=12;r++){
+      var tr=el('tr'); tr.appendChild(el('td','rl',String(r)));
+      ['nose','side','aft'].forEach(function(a){ tr.appendChild(el('td',null,AERO_LOC[a][r])); });
+      t.appendChild(tr);
+    }
+    return t;
+  }, 'Total Warfare p.237, format Location / Critical. "Wing" in the Side column means the wing on the struck side.'));
+
+  // notes
+  $('pane-notes').innerHTML =
+   '<div class="md">'
+  +'<h3>What this does</h3>'
+  +'<p>Pick a target and arc once. Tap a weapon. It rolls the cluster die, applies every modifier you have '
+  +'toggled, reads the Cluster Hits Table, splits the hits into damage groups, rolls each group’s hit '
+  +'location, and adds it all to a running tally for that target.</p>'
+  +'<h3>Auto-roll vs manual</h3>'
+  +'<p>The button in the header switches between rolling for you and entering your own physical dice. In manual '
+  +'mode you are asked for the cluster roll, then one location roll per damage group.</p>'
+  +'<h3>Ruleset</h3>'
+  +'<p>Defaults follow the <b>BattleTech Core Rulebook</b> (CAT37101). The Core changelog leaves the Cluster Hits '
+  +'Table, the hit location tables, damage transfer and head hits untouched. What it does change, and what is '
+  +'implemented here:</p><ul>'
+  +'<li>MRM: the +1 to-hit penalty is gone, replaced by <b>&minus;1 on the Cluster Hits Table</b>.</li>'
+  +'<li>Apollo FCS reworked — standard mode cancels that MRM penalty, and a new <b>saturation mode</b> is added.</li>'
+  +'<li>Machine Gun Array: <b>+2 to the Cluster Hits Table roll</b>.</li>'
+  +'<li>ATM: cluster size changed from 5 to 6.</li>'
+  +'<li>Extended LRM: no longer halves cluster results at minimum range, and can now take Artemis.</li>'
+  +'<li>Acid missiles: cluster penalty softened from &minus;2 to &minus;1.</li>'
+  +'<li>Semi-guided fired unguided: &minus;1 on the Cluster Hits Table.</li>'
+  +'<li>Narc and iNarc homing effects merged and strengthened.</li>'
+  +'<li>AMS: roll direction inverted, twice per turn, can zero a flight outright.</li>'
+  +'<li>Damage groupings: leftover groups are always applied last — this app orders them that way.</li>'
+  +'<li>Ultra ACs no longer jam; Rotary AC unjamming moves to the Movement Phase.</li>'
+  +'<li>Floating Criticals are now printed as a standard-but-optional rule (toggle on the target panel).</li>'
+  +'</ul>'
+  +'<h3>Three things you should set yourself</h3>'
+  +'<p>These are flagged in the Rules tab because Catalyst has not published the numbers:</p><ul>'
+  +'<li><b>Apollo saturation mode</b> — genuinely not public. It is a post-playtest addition and no source describes it. Currently contributes 0.</li>'
+  +'<li><b>Narc</b> — "rewritten to be stronger", number unpublished. Set to the old +2 as a placeholder.</li>'
+  +'<li><b>AMS</b> — the rewrite is confirmed but the modifier is not. Set to the old &minus;4.</li>'
+  +'</ul><p>Each takes about five seconds to correct once your book is open, and the app remembers it.</p>'
+  +'<h3>Also worth a look</h3><ul>'
+  +'<li><b>ATM grouping</b> — "cluster size changed from 5 to 6" is read here as six missiles per damage group. If your book means six damage points, change it in Rules.</li>'
+  +'<li><b>Silver Bullet Gauss</b> — treated as a 20-slug cluster; the submunition count could not be verified.</li>'
+  +'<li><b>Battle Armour</b> — a 1D6 trooper roll per damage group, no transfer between troopers. That is MegaMek’s implementation; published rules text was not found.</li>'
+  +'</ul>'
+  +'<h3>Sources</h3><ul>'
+  +'<li>Catalyst, <i>BattleTech Core Rulebook Changelog</i>, 30 May 2026</li>'
+  +'<li><i>Total Warfare</i> compiled tables and the AGoAC 7th-printing reference card</li>'
+  +'<li>MegaMek source (Compute, MissileWeaponHandler, ProtoMek, Aero, Tank)</li>'
+  +'<li>Keith Hann interview, Sarna, on why the Cluster Hits Table was kept</li>'
+  +'</ul>'
+  +'<p style="color:var(--dim2);font-size:11.5px;margin-top:18px">Everything is stored on this device only. '
+  +'Works with no network — save the page and it keeps working.</p>'
+  +'</div>';
+}
+
+function tableBlock(title, build, note){
+  var d = el('div');
+  d.appendChild(el('h3', null, title)).style.cssText='color:var(--accent);font-size:13px;margin:16px 0 7px;letter-spacing:.06em';
+  var sc = el('div','scroll'); sc.appendChild(build()); d.appendChild(sc);
+  if(note){ var n = el('div',null,note); n.style.cssText='font-size:11.5px;color:var(--dim);margin:-8px 0 14px;line-height:1.5'; d.appendChild(n); }
+  return d;
+}
+
+// ===========================================================================
+// Wiring
+// ===========================================================================
+$('addTgt').onclick=function(){ S.targets.push(newTarget(S.targets.length+1)); S.cur=S.targets.length-1; save(); renderAll(); };
+$('delTgt').onclick=function(){ if(S.targets.length<2) return; S.targets.splice(S.cur,1); S.cur=0; save(); renderAll(); };
+$('clearTgt').onclick=function(){ var t=T(); t.tally={};t.total=0;t.heads=0;t.tacs=0;t.crits=0;t.history=[]; save(); $('result').innerHTML=''; renderAll(); };
+$('clearAll').onclick=function(){ S.targets.forEach(function(t){t.tally={};t.total=0;t.heads=0;t.tacs=0;t.crits=0;t.history=[];}); save(); $('result').innerHTML=''; renderAll(); };
+$('pinBtn').onclick=function(){ pinMode=!pinMode; document.body.classList.toggle('pinmode',pinMode);
+  $('pinBtn').textContent = pinMode ? 'done pinning' : 'pin favourites'; };
+$('diceBtn').onclick=function(){ MANUAL=!MANUAL; save();
+  $('diceBtn').textContent = MANUAL ? 'I roll' : 'Auto-roll';
+  $('diceBtn').classList.toggle('on', !MANUAL); };
+$('search').oninput=function(e){ filter=e.target.value; renderWeapons(); };
+$('setBtn').onclick=function(){ renderModal(); $('modal').classList.add('show'); };
+$('closeModal').onclick=function(){ $('modal').classList.remove('show'); };
+
+var tabs = [['rules','Modifiers'],['tables','Tables'],['notes','How it works']];
+tabs.forEach(function(t,i){
+  var b = el('div','tab'+(i===0?' on':''), t[1]);
+  b.onclick=function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on')});
+    document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on'); $('pane-'+t[0]).classList.add('on');
+  };
+  $('tabs').appendChild(b);
+});
+
+// When served over http(s), register the service worker so the app keeps working
+// with no signal. Silently skipped when the file is opened straight from disk.
+if (location.protocol.indexOf('http') === 0 && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+
+function renderAll(){ renderTargets(); renderMods(); renderWeapons(); renderTally(); }
+$('diceBtn').textContent = MANUAL ? 'I roll' : 'Auto-roll';
+$('diceBtn').classList.toggle('on', !MANUAL);
+renderAll();
+</script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a50b2bd57c92450d',t:'MTc5MzAzNTY0MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

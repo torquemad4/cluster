@@ -1,0 +1,7 @@
+{
+  // Static-assets Worker. Name matches the existing deployment so a deploy updates it in place.
+  "name": "drop-1a1795af-46f",
+  "compatibility_date": "2026-10-26",
+  "assets": { "directory": "./public" },
+  "routes": [{ "pattern": "bt-cluster-resolver.torquemada.uk", "custom_domain": true }]
+}
